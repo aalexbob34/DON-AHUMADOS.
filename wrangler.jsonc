@@ -12,9 +12,6 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "donahumados", "database_id": "35dc5611-7c5b-48dc-a8ed-4cc61963562d", "migrations_dir": "migrations" }
   ],
-  "r2_buckets": [
-    { "binding": "BUCKET", "bucket_name": "don-ahumados-fotos" }
-  ],
   "vars": {
     "SITE_URL": "",
     "ADMIN_USER": "alex"
