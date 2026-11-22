@@ -15,5 +15,6 @@
   "vars": {
     "SITE_URL": "",
     "ADMIN_USER": "alex"
-  }
+  },
+  "observability": { "enabled": true }
 }
