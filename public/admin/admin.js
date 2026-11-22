@@ -1,3 +1,15 @@
+// Las fotos se guardan en la base de datos (límite ~1,4 MB): se reducen y comprimen aquí antes de subirlas.
+async function prep(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= 700 * 1024) return file;
+  try {
+    const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k); cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const toBlob = (t, q) => new Promise((r) => cv.toBlob(r, t, q));
+    for (const q of [0.85, 0.7, 0.55, 0.4]) { const b = await toBlob('image/webp', q); if (b && b.type === 'image/webp' && b.size < 1300 * 1024) return new File([b], 'foto.webp', { type: 'image/webp' }); }
+    for (const q of [0.8, 0.6, 0.4]) { const b = await toBlob('image/jpeg', q); if (b && b.size < 1300 * 1024) return new File([b], 'foto.jpg', { type: 'image/jpeg' }); }
+  } catch {}
+  return file;
+}
 'use strict';
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -81,7 +93,8 @@
       <div class="full"><label class="f">Descripción corta</label><input class="input" name="short_desc" value="${esc(d.short_desc)}"></div>
       <div class="full"><label class="f">Descripción completa</label><textarea class="input" name="description" rows="4">${esc(d.description)}</textarea></div></div>
     <div class="checks"><label><input type="checkbox" name="featured" ${d.featured ? 'checked' : ''}> Destacado en inicio</label><label><input type="checkbox" name="is_new" ${d.is_new ? 'checked' : ''}> Marcar como nuevo</label><label><input type="checkbox" name="active" ${d.active ? 'checked' : ''}> Publicado</label></div>
-    <label class="f">Fotografías (la primera es la principal)</label><div class="imgs" id="imgs"></div><input type="file" id="up" accept="image/jpeg,image/png,image/webp" multiple><p class="hint">JPG, PNG o WebP de hasta 6 MB. Puedes subir varias a la vez.</p>
+    <label class="f">Fotografías (la primera es la principal)</label><div class="imgs" id="imgs"></div><input type="file" id="up" accept="image/jpeg,image/png,image/webp" multiple><p class="hint">JPG, PNG o WebP. Se comprimen solas (máx. 1,4 MB cada una). Puedes subir varias a la vez.</p>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap"><input class="input" id="imgurl" type="url" placeholder="…o pega el enlace de una foto (https://…)" style="flex:1;min-width:200px"><button type="button" class="btn tiny ghost" id="addurl">Agregar enlace</button></div>
     <label class="f" style="margin-top:.8rem">Presentaciones (opcional: si agregas, el precio e inventario salen de aquí)</label><div id="vs"></div><button type="button" class="btn tiny ghost" id="av">+ Agregar presentación</button>
     <div class="fg" style="margin-top:1rem"><div><label class="f">Características (una por línea)</label><textarea class="input" name="features" rows="4">${esc(d.features.join('\n'))}</textarea></div>
       <div><label class="f">Beneficios (uno por línea)</label><textarea class="input" name="benefits" rows="4">${esc(d.benefits.join('\n'))}</textarea></div>
@@ -96,7 +109,8 @@
       $$('[data-rm]', m).forEach((b) => b.onclick = () => { images.splice(+b.dataset.rm, 1); drawImgs(); });
       $$('[data-mk]', m).forEach((b) => b.onclick = () => { const [u] = images.splice(+b.dataset.mk, 1); images.unshift(u); drawImgs(); }); };
     drawImgs();
-    $('#up', m).onchange = guard(async (e) => { const f = new FormData(); [...e.target.files].forEach((x) => f.append('files', x)); const r = await api('/api/admin/upload', { method: 'POST', form: f }); images.push(...r.urls); drawImgs(); toast('Fotos subidas'); });
+    $('#addurl', m).onclick = () => { const u = $('#imgurl', m).value.trim(); if (!/^https:\/\/[^\s"'()\\]+$/.test(u)) return toast('Escribe un enlace válido que empiece por https://'); images.push(u); $('#imgurl', m).value = ''; drawImgs(); };
+    $('#up', m).onchange = guard(async (e) => { const f = new FormData(); for (const x of e.target.files) f.append('files', await prep(x)); const r = await api('/api/admin/upload', { method: 'POST', form: f }); images.push(...r.urls); drawImgs(); toast('Fotos subidas'); });
     const vs = $('#vs', m);
     const addV = (v = { id: '', name: '', price: '', stock: '' }) => { const r = document.createElement('div'); r.className = 'vrow'; r.dataset.id = v.id || '';
       r.innerHTML = `<input class="input" placeholder="Ej. 500 g" value="${esc(v.name)}" aria-label="Nombre"><input class="input" type="number" min="0" placeholder="Precio" value="${esc(v.price)}" aria-label="Precio"><input class="input" type="number" min="0" placeholder="Stock" value="${esc(v.stock)}" aria-label="Stock"><button type="button" class="btn tiny danger">×</button>`;
@@ -189,7 +203,7 @@
       <div class="box"><h3>Testimonios de clientes</h3>${t.map((x) => `<div class="bar" style="margin-bottom:.5rem"><span>${'★'.repeat(x.rating)} <b>${esc(x.name)}</b>: ${esc(x.text)}</span><button class="btn tiny danger" data-dt="${x.id}">Eliminar</button></div>`).join('')}
       <form id="tf" class="fg" style="margin-top:1rem"><input class="input" name="name" placeholder="Nombre del cliente" required><input class="input" name="text" placeholder="Comentario" required><select class="input" name="rating"><option>5</option><option>4</option><option>3</option></select><button class="btn">Agregar</button></form><p class="hint">Agrega únicamente testimonios reales de clientes que te hayan dado su autorización.</p></div>`;
     let hero = s.hero_image, logo = s.logo;
-    const up = async (file) => { const f = new FormData(); f.append('files', file); return (await api('/api/admin/upload', { method: 'POST', form: f })).urls[0]; };
+    const up = async (file) => { const f = new FormData(); f.append('files', await prep(file)); return (await api('/api/admin/upload', { method: 'POST', form: f })).urls[0]; };
     $('#hu').onchange = guard(async (e) => { hero = await up(e.target.files[0]); toast('Imagen cargada: recuerda guardar'); });
     $('#lu').onchange = guard(async (e) => { logo = await up(e.target.files[0]); toast('Logo cargado: recuerda guardar'); });
     $('#lc').onclick = () => { logo = ''; toast('Logo quitado: recuerda guardar'); };
@@ -237,7 +251,7 @@
     $i('bgc').value = st.bg_color; $i('acc').value = st.accent_color; $i('bgd').value = st.bg_dim; $i('wmm').value = st.watermark_mode; $i('wms').value = st.watermark_size; $i('wmo').value = st.watermark_opacity;
     const bind = (id, key, num) => $i(id).oninput = (e) => { st[key] = num ? Number(e.target.value) : e.target.value; paint(); };
     bind('bgc', 'bg_color'); bind('acc', 'accent_color'); bind('bgd', 'bg_dim', 1); bind('wmm', 'watermark_mode'); bind('wms', 'watermark_size', 1); bind('wmo', 'watermark_opacity', 1);
-    const up = async (file) => { const f = new FormData(); f.append('files', file); return (await api('/api/admin/upload', { method: 'POST', form: f })).urls[0]; };
+    const up = async (file) => { const f = new FormData(); f.append('files', await prep(file)); return (await api('/api/admin/upload', { method: 'POST', form: f })).urls[0]; };
     $i('bgu').onchange = guard(async (e) => { st.bg_image = await up(e.target.files[0]); paint(); });
     $i('wmu').onchange = guard(async (e) => { st.watermark = await up(e.target.files[0]); paint(); });
     $i('bgx').onclick = () => { st.bg_image = ''; paint(); };
